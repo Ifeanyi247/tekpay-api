@@ -148,12 +148,15 @@ class AuthController extends Controller
             ]);
 
             // Create profile with pin
-            Profile::create([
+            $profile = Profile::create([
                 'user_id' => $user->id,
                 'pin_code' => (int) $request->pin_code,
                 'wallet' => 0,
                 'profile_url' => 'https://ui-avatars.com/api/?name=' . urlencode($user->first_name . ' ' . $user->last_name)
             ]);
+
+            // Load the profile relationship
+            $user->load('profile');
 
             // Clear cached data
             Cache::forget('pin_token_' . $request->pin_token);
@@ -166,6 +169,7 @@ class AuthController extends Controller
                 'message' => 'Registration completed successfully',
                 'data' => [
                     'user' => $user,
+                    'profile' => $profile,
                     'token' => $token
                 ]
             ]);
@@ -237,7 +241,7 @@ class AuthController extends Controller
             ], 401);
         }
 
-        $user = User::find($user_id);
+        $user = User::with('profile')->find($user_id);
         $profile = $user->profile;
 
         if (!$profile || $profile->pin_code !== (int) $request->pin_code) {
@@ -259,6 +263,7 @@ class AuthController extends Controller
             'message' => 'Login successful',
             'data' => [
                 'user' => $user,
+                'profile' => $profile,
                 'token' => $token
             ]
         ]);
