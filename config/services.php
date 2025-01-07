@@ -35,4 +35,10 @@ return [
         ],
     ],
 
+    'vtpass' => [
+        'api_key' => env('VT_PASS_API_KEY'),
+        'public_key' => env('VT_PASS_PUBLIC_KEY'),
+        'secret_key' => env('VT_PASS_SECRET_KEY'),
+    ],
+
 ];

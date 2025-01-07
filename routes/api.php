@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Auth\AuthController;
+use App\Http\Controllers\Bills\AirtimeController;
 use App\Http\Controllers\User\UserController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
@@ -28,4 +29,10 @@ Route::prefix('auth')->group(function () {
 Route::middleware('auth:sanctum')->group(function () {
     Route::get('/user', [UserController::class, 'index']);
     Route::post('/user/profile', [UserController::class, 'updateProfile']);
+
+    // Bills Payment Routes
+    Route::prefix('bills')->group(function () {
+        Route::post('/airtime', [AirtimeController::class, 'purchaseAirtime']);
+        Route::post('/airtime/status', [AirtimeController::class, 'checkTransactionStatus']);
+    });
 });
