@@ -14,7 +14,7 @@ return new class extends Migration
         Schema::create('profiles', function (Blueprint $table) {
             $table->id();
             $table->foreignUuid('user_id')->references('id')->on('users');
-            $table->string('profile_url');
+            $table->string('profile_url')->nullable();
             $table->integer('pin_code');
             $table->integer('wallet')->default(0);
             $table->timestamps();
