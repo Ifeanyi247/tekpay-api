@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Auth\AuthController;
 use App\Http\Controllers\Bills\AirtimeController;
+use App\Http\Controllers\Bills\DataController;
 use App\Http\Controllers\User\UserController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
@@ -33,9 +34,18 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/profile', [UserController::class, 'updateProfile']);
     });
 
+
+
     // Bills Payment Routes
     Route::prefix('bills')->group(function () {
-        Route::post('/airtime', [AirtimeController::class, 'purchaseAirtime']);
         Route::post('/status', [AirtimeController::class, 'checkTransactionStatus']);
+        Route::prefix('airtime')->group(function () {
+            Route::post('/', [AirtimeController::class, 'purchaseAirtime']);
+        });
+
+        Route::prefix('data')->group(function () {
+            Route::get('/plans/{serviceID}', [DataController::class, 'getDataPlans']);
+            Route::post('/purchase', [DataController::class, 'purchaseData']);
+        });
     });
 });
