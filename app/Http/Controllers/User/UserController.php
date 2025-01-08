@@ -4,6 +4,7 @@ namespace App\Http\Controllers\User;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Models\Transaction;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
@@ -21,6 +22,18 @@ class UserController extends Controller
                 'user' => $user,
                 'profile' => $user->profile
             ]
+        ]);
+    }
+
+    public function transactions(Request $request)
+    {
+        $transactions = Transaction::where('user_id', auth()->id())
+            ->latest()
+            ->get();
+
+        return response()->json([
+            'status' => true,
+            'data' => $transactions
         ]);
     }
 

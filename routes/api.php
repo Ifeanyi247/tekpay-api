@@ -13,7 +13,7 @@ use Illuminate\Support\Facades\Route;
 |
 | Here is where you can register API routes for your application. These
 | routes are loaded by the RouteServiceProvider and all of them will
-| be assigned to the "api" middleware group.
+| be assigned to the "api" middleware group. Make something great!
 |
 */
 
@@ -27,12 +27,15 @@ Route::prefix('auth')->group(function () {
 });
 
 Route::middleware('auth:sanctum')->group(function () {
-    Route::get('/user', [UserController::class, 'index']);
-    Route::post('/user/profile', [UserController::class, 'updateProfile']);
+    Route::prefix('user')->group(function () {
+        Route::get('/', [UserController::class, 'index']);
+        Route::get('/transactions', [UserController::class, 'transactions']);
+        Route::post('/profile', [UserController::class, 'updateProfile']);
+    });
 
     // Bills Payment Routes
     Route::prefix('bills')->group(function () {
         Route::post('/airtime', [AirtimeController::class, 'purchaseAirtime']);
-        Route::post('/airtime/status', [AirtimeController::class, 'checkTransactionStatus']);
+        Route::post('/status', [AirtimeController::class, 'checkTransactionStatus']);
     });
 });

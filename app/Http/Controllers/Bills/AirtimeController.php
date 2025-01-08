@@ -3,8 +3,10 @@
 namespace App\Http\Controllers\Bills;
 
 use App\Http\Controllers\Controller;
+use App\Models\Transaction;
 use App\Traits\VTPassResponseHandler;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
@@ -34,72 +36,133 @@ class AirtimeController extends Controller
         }
 
         try {
-            // Generate unique request ID with GMT+1 timezone including hour
-            $lagosTime = Carbon::now('Africa/Lagos');
-            $requestId = $lagosTime->format('YmdH') . Str::random(8);
+            // Check profile balance
+            $user = $request->user();
+            $profile = $user->profile;
 
-            $response = Http::withHeaders([
-                'api-key' => env('VT_PASS_API_KEY'),
-                'secret-key' => env('VT_PASS_SECRET_KEY'),
-                'Content-Type' => 'application/json'
-            ])->post($this->baseUrl . '/pay', [
-                'request_id' => $requestId,
-                'serviceID' => $request->serviceID,
-                'amount' => $request->amount,
-                'phone' => $request->phone
-            ]);
-
-            if ($response->successful()) {
-                $data = $response->json();
-                Log::info('VTPass Response:', $data);
-
-                $responseInfo = $this->getResponseMessage($data['code']);
-                $transactions = $data['content']['transactions'] ?? [];
-
-                // Return appropriate response based on status code
-                if ($this->isSuccess($data['code'])) {
-                    return response()->json([
-                        'status' => true,
-                        'message' => $this->getTransactionStatus($transactions),
-                        'data' => [
-                            'requestId' => $data['requestId'],
-                            'transactionId' => $transactions['transactionId'],
-                            'amount' => $data['amount'],
-                            'transaction_date' => $data['transaction_date'],
-                            'phone' => $transactions['phone'],
-                            'network' => $request->serviceID,
-                            'status' => $transactions['status'],
-                            'product_name' => $transactions['product_name'],
-                            'commission' => $transactions['commission'],
-                            'total_amount' => $transactions['total_amount']
-                        ]
-                    ]);
-                }
-
-                if ($this->isProcessing($data['code'])) {
-                    return response()->json([
-                        'status' => true,
-                        'message' => $responseInfo['message'],
-                        'data' => [
-                            'requestId' => $data['requestId'],
-                            'shouldRequery' => true
-                        ]
-                    ]);
-                }
-
+            if (!$profile || (int) $profile->wallet < (int) $request->amount) {
                 return response()->json([
                     'status' => false,
-                    'message' => $responseInfo['message'],
-                    'data' => $data
+                    'message' => 'Insufficient balance',
+                    'data' => [
+                        'balance' => $profile ? $profile->balance : 0,
+                        'required' => $request->amount
+                    ]
                 ], 400);
             }
 
-            Log::error('VTPass Error Response:', ['body' => $response->body()]);
-            return response()->json([
-                'status' => false,
-                'message' => 'Failed to process request',
-                'error' => $response->body()
-            ], $response->status());
+            // Generate unique request ID with GMT+1 timezone including hour
+            $lagosTime = Carbon::now('Africa/Lagos');
+            $requestId = $lagosTime->format('YmdH') . Str::random(8);
+            $reference = 'TRX' . $lagosTime->format('YmdHis') . Str::random(6);
+
+            DB::beginTransaction();
+            try {
+                $response = Http::withHeaders([
+                    'api-key' => env('VT_PASS_API_KEY'),
+                    'secret-key' => env('VT_PASS_SECRET_KEY'),
+                    'Content-Type' => 'application/json'
+                ])->post($this->baseUrl . '/pay', [
+                    'request_id' => $requestId,
+                    'serviceID' => $request->serviceID,
+                    'amount' => $request->amount,
+                    'phone' => $request->phone
+                ]);
+
+                if ($response->successful()) {
+                    $data = $response->json();
+                    Log::info('VTPass Response:', $data);
+
+                    $responseInfo = $this->getResponseMessage($data['code']);
+                    $transactions = $data['content']['transactions'] ?? [];
+
+                    // Create transaction record
+                    $transaction = new Transaction([
+                        'user_id' => $user->id,
+                        'request_id' => $data['requestId'],
+                        'transaction_id' => $transactions['transactionId'] ?? null,
+                        'reference' => $reference,
+                        'amount' => $request->amount,
+                        'commission' => $transactions['commission'] ?? 0,
+                        'total_amount' => $transactions['total_amount'] ?? $request->amount,
+                        'type' => 'airtime_purchase',
+                        'status' => $transactions['status'] ?? 'pending',
+                        'service_id' => $request->serviceID,
+                        'phone' => $request->phone,
+                        'product_name' => $transactions['product_name'] ?? "{$request->serviceID} Airtime",
+                        'platform' => $transactions['platform'] ?? 'api',
+                        'channel' => $transactions['channel'] ?? 'api',
+                        'method' => $transactions['method'] ?? 'api',
+                        'response_code' => $data['code'],
+                        'response_message' => $responseInfo['message'],
+                        'transaction_date' => $data['transaction_date']['date'] ?? now()
+                    ]);
+
+                    // Return appropriate response based on status code
+                    if ($this->isSuccess($data['code'])) {
+                        // Deduct from profile balance
+                        $profile->wallet -= $request->amount;
+                        if (!$profile->save()) {
+                            throw new \Exception('Failed to deduct balance');
+                        }
+
+                        $transaction->save();
+                        DB::commit();
+
+                        return response()->json([
+                            'status' => true,
+                            'message' => $this->getTransactionStatus($transactions),
+                            'data' => [
+                                'requestId' => $data['requestId'],
+                                'transactionId' => $transactions['transactionId'],
+                                'reference' => $reference,
+                                'amount' => $data['amount'],
+                                'transaction_date' => $data['transaction_date'],
+                                'phone' => $transactions['phone'],
+                                'network' => $request->serviceID,
+                                'status' => $transactions['status'],
+                                'product_name' => $transactions['product_name'],
+                                'commission' => $transactions['commission'],
+                                'total_amount' => $transactions['total_amount'],
+                                'balance' => $profile->balance
+                            ]
+                        ]);
+                    }
+
+                    if ($this->isProcessing($data['code'])) {
+                        $transaction->save();
+                        DB::commit();
+
+                        return response()->json([
+                            'status' => true,
+                            'message' => $responseInfo['message'],
+                            'data' => [
+                                'requestId' => $data['requestId'],
+                                'reference' => $reference,
+                                'shouldRequery' => true
+                            ]
+                        ]);
+                    }
+
+                    DB::rollBack();
+                    return response()->json([
+                        'status' => false,
+                        'message' => $responseInfo['message'],
+                        'data' => $data
+                    ], 400);
+                }
+
+                DB::rollBack();
+                Log::error('VTPass Error Response:', ['body' => $response->body()]);
+                return response()->json([
+                    'status' => false,
+                    'message' => 'Failed to process request',
+                    'error' => $response->body()
+                ], $response->status());
+            } catch (\Exception $e) {
+                DB::rollBack();
+                throw $e;
+            }
         } catch (\Exception $e) {
             Log::error('VTPass Exception:', ['error' => $e->getMessage()]);
             return response()->json([
@@ -139,6 +202,17 @@ class AirtimeController extends Controller
 
                 $responseInfo = $this->getResponseMessage($data['code']);
                 $transactions = $data['content']['transactions'] ?? [];
+
+                // Update transaction record if exists
+                $transaction = Transaction::where('request_id', $request->request_id)->first();
+                if ($transaction && $this->isSuccess($data['code'])) {
+                    $transaction->update([
+                        'transaction_id' => $transactions['transactionId'] ?? $transaction->transaction_id,
+                        'status' => $transactions['status'] ?? $transaction->status,
+                        'response_code' => $data['code'],
+                        'response_message' => $responseInfo['message']
+                    ]);
+                }
 
                 if ($this->isSuccess($data['code'])) {
                     return response()->json([
