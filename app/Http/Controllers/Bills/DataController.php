@@ -22,7 +22,7 @@ class DataController extends Controller
     public function getDataPlans($serviceID)
     {
         $validator = Validator::make(['serviceID' => $serviceID], [
-            'serviceID' => 'required|string|in:mtn-data,glo-data,airtel-data,etisalat-data'
+            'serviceID' => 'required|string|in:mtn-data,glo-data,airtel-data,etisalat-data,glo-sme-data,9mobile-sme-data'
         ]);
 
         if ($validator->fails()) {

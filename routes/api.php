@@ -3,6 +3,7 @@
 use App\Http\Controllers\Auth\AuthController;
 use App\Http\Controllers\Bills\AirtimeController;
 use App\Http\Controllers\Bills\DataController;
+use App\Http\Controllers\Bills\TvController;
 use App\Http\Controllers\User\UserController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
@@ -46,6 +47,12 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::prefix('data')->group(function () {
             Route::get('/plans/{serviceID}', [DataController::class, 'getDataPlans']);
             Route::post('/purchase', [DataController::class, 'purchaseData']);
+        });
+
+        Route::prefix('tv')->group(function () {
+            Route::get('/plans/{serviceID}', [TvController::class, 'getTvVariations']);
+            Route::post('/verify-smartcard', [TvController::class, 'verifySmartcard']);
+            Route::post('/subscribe', [TvController::class, 'purchaseSubscription']);
         });
     });
 });
