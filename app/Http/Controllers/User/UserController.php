@@ -100,10 +100,6 @@ class UserController extends Controller
                     'profile_url' => url($url)
                 ]);
                 $user->load('profile');
-            } else {
-                $user->profile->update([
-                    'profile_url' => 'https://ui-avatars.com/api/?name=' . urlencode($user->first_name . ' ' . $user->last_name)
-                ]);
             }
 
             return response()->json([
