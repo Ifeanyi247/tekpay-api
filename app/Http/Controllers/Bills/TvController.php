@@ -137,15 +137,23 @@ class TvController extends Controller
 
     public function purchaseSubscription(Request $request)
     {
-        $validator = Validator::make($request->all(), [
+        $rules = [
             'billersCode' => 'required|string',
-            'phone' => 'required|string',
             'serviceID' => 'required|string|in:dstv,gotv,startimes',
-            'subscription_type' => 'required|string|in:change,renew',
             'amount' => 'required|numeric',
-            'variation_code' => 'required_if:subscription_type,change|string',
-            'quantity' => 'sometimes|integer|min:1'
-        ]);
+            'phone' => 'required|string',
+        ];
+
+        // Add conditional validation rules
+        if (in_array($request->serviceID, ['dstv', 'gotv'])) {
+            $rules['subscription_type'] = 'required|string|in:change,renew';
+            $rules['variation_code'] = 'required_if:subscription_type,change|string';
+            $rules['quantity'] = 'sometimes|integer|min:1';
+        } else {
+            $rules['variation_code'] = 'required|string';
+        }
+
+        $validator = Validator::make($request->all(), $rules);
 
         if ($validator->fails()) {
             return response()->json([
@@ -160,7 +168,7 @@ class TvController extends Controller
             $user = $request->user();
             $profile = $user->profile;
 
-            if ($profile->balance < $request->amount) {
+            if ($profile->wallet < $request->amount) {
                 return response()->json([
                     'status' => false,
                     'message' => 'Insufficient balance'
@@ -168,24 +176,29 @@ class TvController extends Controller
             }
 
             // Generate unique request ID
-            $requestId = 'TV' . Str::random(15) . time();
+            $lagosTime = Carbon::now('Africa/Lagos');
+            $requestId = $lagosTime->format('YmdH') . Str::random(8);
 
-            // Prepare payload
+            // Base payload for all services
             $payload = [
                 'request_id' => $requestId,
                 'serviceID' => $request->serviceID,
                 'billersCode' => $request->billersCode,
                 'amount' => $request->amount,
-                'phone' => $request->phone,
-                'subscription_type' => $request->subscription_type
+                'phone' => $request->phone
             ];
 
-            // Add variation_code and quantity for bouquet change
-            if ($request->subscription_type === 'change') {
-                $payload['variation_code'] = $request->variation_code;
-                if ($request->has('quantity')) {
-                    $payload['quantity'] = $request->quantity;
+            // Add additional fields for DSTV and GOTV
+            if (in_array($request->serviceID, ['dstv', 'gotv'])) {
+                $payload['subscription_type'] = $request->subscription_type;
+                if ($request->subscription_type === 'change') {
+                    $payload['variation_code'] = $request->variation_code;
+                    if ($request->has('quantity')) {
+                        $payload['quantity'] = $request->quantity;
+                    }
                 }
+            } else {
+                $payload['variation_code'] = $request->variation_code;
             }
 
             $response = Http::withHeaders([
@@ -203,18 +216,41 @@ class TvController extends Controller
                     DB::beginTransaction();
                     try {
                         // Update user balance
-                        $profile->balance -= $request->amount;
+                        $profile->wallet -= $request->amount;
                         $profile->save();
+
+                        // Get transaction details from response
+                        $txn = $data['content']['transactions'];
+
+                        // Set product name based on service type
+                        if (in_array($request->serviceID, ['dstv', 'gotv'])) {
+                            $productName = $request->subscription_type === 'change'
+                                ? "TV Subscription - {$request->serviceID} (Change)"
+                                : "TV Subscription - {$request->serviceID} (Renewal)";
+                        } else {
+                            $productName = "TV Subscription - {$request->serviceID}";
+                        }
 
                         // Create transaction record
                         Transaction::create([
                             'user_id' => $user->id,
-                            'amount' => $request->amount,
-                            'type' => 'debit',
-                            'status' => 'success',
+                            'request_id' => $requestId,
+                            'transaction_id' => $txn['transactionId'],
                             'reference' => $requestId,
-                            'description' => "TV Subscription - {$request->serviceID} ({$request->subscription_type})",
-                            'meta' => json_encode($data)
+                            'amount' => $request->amount,
+                            'commission' => $txn['commission'] ?? 0,
+                            'total_amount' => $txn['total_amount'] ?? $request->amount,
+                            'type' => 'TV Subscription - ' . $request->serviceID,
+                            'status' => 'success',
+                            'service_id' => $request->serviceID,
+                            'phone' => $request->phone,
+                            'product_name' => $productName,
+                            'platform' => $txn['platform'] ?? 'api',
+                            'channel' => $txn['channel'] ?? 'api',
+                            'method' => $txn['method'] ?? 'api',
+                            'response_code' => $data['code'],
+                            'response_message' => $data['response_description'],
+                            'transaction_date' => now()
                         ]);
 
                         DB::commit();
