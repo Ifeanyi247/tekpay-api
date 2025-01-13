@@ -3,6 +3,7 @@
 use App\Http\Controllers\Auth\AuthController;
 use App\Http\Controllers\Bills\AirtimeController;
 use App\Http\Controllers\Bills\DataController;
+use App\Http\Controllers\Bills\ElectricityController;
 use App\Http\Controllers\Bills\TvController;
 use App\Http\Controllers\User\UserController;
 use Illuminate\Http\Request;
@@ -50,9 +51,14 @@ Route::middleware('auth:sanctum')->group(function () {
         });
 
         Route::prefix('tv')->group(function () {
-            Route::get('/plans/{serviceID}', [TvController::class, 'getTvVariations']);
-            Route::post('/verify-smartcard', [TvController::class, 'verifySmartcard']);
-            Route::post('/subscribe', [TvController::class, 'purchaseSubscription']);
+            Route::get('/variations/{serviceID}', [TvController::class, 'getTvVariations']);
+            Route::post('/verify', [TvController::class, 'verifySmartcard']);
+            Route::post('/purchase', [TvController::class, 'purchaseSubscription']);
+        });
+
+        Route::prefix('electricity')->group(function () {
+            Route::post('/verify', [ElectricityController::class, 'verifyMeter']);
+            Route::post('/purchase', [ElectricityController::class, 'purchaseElectricity']);
         });
     });
 });
