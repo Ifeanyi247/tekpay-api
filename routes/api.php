@@ -3,6 +3,7 @@
 use App\Http\Controllers\Auth\AuthController;
 use App\Http\Controllers\Bills\AirtimeController;
 use App\Http\Controllers\Bills\DataController;
+use App\Http\Controllers\Bills\EducationController;
 use App\Http\Controllers\Bills\ElectricityController;
 use App\Http\Controllers\Bills\TvController;
 use App\Http\Controllers\User\UserController;
@@ -59,6 +60,11 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::prefix('electricity')->group(function () {
             Route::post('/verify', [ElectricityController::class, 'verifyMeter']);
             Route::post('/purchase', [ElectricityController::class, 'purchaseElectricity']);
+        });
+
+        Route::prefix('education')->group(function () {
+            Route::get('/variations/{serviceID}', [EducationController::class, 'getVariations']);
+            Route::post('/waec/purchase', [EducationController::class, 'purchaseWaecEducation']);
         });
     });
 });

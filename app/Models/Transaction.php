@@ -28,14 +28,17 @@ class Transaction extends Model
         'method',
         'response_code',
         'response_message',
-        'transaction_date'
+        'transaction_date',
+        'purchased_code',
+        'cards'
     ];
 
     protected $casts = [
         'amount' => 'decimal:2',
         'commission' => 'decimal:2',
         'total_amount' => 'decimal:2',
-        'transaction_date' => 'datetime'
+        'transaction_date' => 'datetime',
+        'cards' => 'array'
     ];
 
     public function user(): BelongsTo
