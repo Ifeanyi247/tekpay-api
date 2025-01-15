@@ -40,7 +40,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
 
     // Bills Payment Routes
-    Route::prefix('bills')->group(function () {
+    Route::prefix('bills')->middleware('auth:sanctum')->group(function () {
         Route::post('/status', [AirtimeController::class, 'checkTransactionStatus']);
         Route::prefix('airtime')->group(function () {
             Route::post('/', [AirtimeController::class, 'purchaseAirtime']);
@@ -65,6 +65,8 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::prefix('education')->group(function () {
             Route::get('/variations/{serviceID}', [EducationController::class, 'getVariations']);
             Route::post('/waec/purchase', [EducationController::class, 'purchaseWaecEducation']);
+            Route::post('/jamb/verify', [EducationController::class, 'verifyJambProfile']);
+            Route::post('/jamb/purchase', [EducationController::class, 'purchaseJamb']);
         });
     });
 });

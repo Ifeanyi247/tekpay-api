@@ -30,6 +30,7 @@ class Transaction extends Model
         'response_message',
         'transaction_date',
         'purchased_code',
+        'pin',
         'cards'
     ];
 

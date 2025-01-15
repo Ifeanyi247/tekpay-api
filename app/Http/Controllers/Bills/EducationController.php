@@ -22,7 +22,7 @@ class EducationController extends Controller
     public function getVariations($serviceID)
     {
         $validator = Validator::make(['serviceID' => $serviceID], [
-            'serviceID' => 'required|string'
+            'serviceID' => 'required|string|in:waec,jamb'
         ]);
 
         if ($validator->fails()) {
@@ -38,7 +38,7 @@ class EducationController extends Controller
                 'api-key' => env('VT_PASS_API_KEY'),
                 'public-key' => env('VT_PASS_PUBLIC_KEY'),
                 'Content-Type' => 'application/json'
-            ])->get($this->baseUrl . '/service-variations', [
+            ])->get('https://sandbox.vtpass.com/api/service-variations', [
                 'serviceID' => $serviceID
             ]);
 
@@ -47,10 +47,16 @@ class EducationController extends Controller
                 Log::info('VTPass Education Variations Response:', $data);
 
                 if ($data['response_description'] === '000') {
+                    $content = $data['content'];
+                    // Remove the misspelled key if it exists
+                    if (isset($content['varations'])) {
+                        unset($content['varations']);
+                    }
+
                     return response()->json([
                         'status' => true,
                         'message' => 'Education variations retrieved successfully',
-                        'data' => $data['content']
+                        'data' => $content
                     ]);
                 }
 
@@ -197,6 +203,240 @@ class EducationController extends Controller
             return response()->json([
                 'status' => false,
                 'message' => 'An error occurred while processing WAEC purchase',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    public function verifyJambProfile(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'billersCode' => 'required|string',
+            'type' => 'required|string|in:utme,de'
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'status' => false,
+                'message' => 'Validation error',
+                'errors' => $validator->errors()
+            ], 422);
+        }
+
+        try {
+            $response = Http::withHeaders([
+                'api-key' => env('VT_PASS_API_KEY'),
+                'secret-key' => env('VT_PASS_SECRET_KEY'),
+                'Content-Type' => 'application/json'
+            ])->post('https://sandbox.vtpass.com/api/merchant-verify', [
+                'billersCode' => $request->billersCode,
+                'serviceID' => 'jamb',
+                'type' => $request->type
+            ]);
+
+            if ($response->successful()) {
+                $data = $response->json();
+                Log::info('VTPass JAMB Profile Verification Response:', $data);
+
+                if ($data['code'] === '000') {
+                    return response()->json([
+                        'status' => true,
+                        'message' => 'JAMB Profile verified successfully',
+                        'data' => $data['content']
+                    ]);
+                }
+
+                $responseMessage = $this->getResponseMessage($data['code']);
+                return response()->json([
+                    'status' => $responseMessage['status'],
+                    'message' => $responseMessage['message']
+                ], 400);
+            }
+
+            return response()->json([
+                'status' => false,
+                'message' => 'Failed to verify JAMB Profile',
+                'error' => $response->body()
+            ], $response->status());
+        } catch (\Exception $e) {
+            Log::error('Error verifying JAMB Profile: ' . $e->getMessage());
+            return response()->json([
+                'status' => false,
+                'message' => 'An error occurred while verifying JAMB Profile',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    public function purchaseJamb(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'variation_code' => 'required|string|in:utme,de',
+            'billersCode' => 'required|string'
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'status' => false,
+                'message' => 'Validation error',
+                'errors' => $validator->errors()
+            ], 422);
+        }
+
+        try {
+            // Get authenticated user and profile
+            $user = $request->user();
+            $profile = $user->profile;
+
+            if (!$user->phone_number) {
+                return response()->json([
+                    'status' => false,
+                    'message' => 'Phone number is required'
+                ], 400);
+            }
+
+            // Get the variation details to check price
+            $variations = Http::withHeaders([
+                'api-key' => env('VT_PASS_API_KEY'),
+                'public-key' => env('VT_PASS_PUBLIC_KEY'),
+                'Content-Type' => 'application/json'
+            ])->get('https://sandbox.vtpass.com/api/service-variations', [
+                'serviceID' => 'jamb'
+            ])->json();
+
+            if (!isset($variations['content']['variations'])) {
+                return response()->json([
+                    'status' => false,
+                    'message' => 'Unable to fetch JAMB variations'
+                ], 400);
+            }
+
+            $variation = collect($variations['content']['variations'])
+                ->firstWhere('variation_code', $request->variation_code);
+
+            if (!$variation) {
+                return response()->json([
+                    'status' => false,
+                    'message' => 'Invalid variation code'
+                ], 400);
+            }
+
+            $amount = (float) $variation['variation_amount'];
+
+            // Check if user has sufficient balance
+            if (!$profile || $profile->wallet < $amount) {
+                return response()->json([
+                    'status' => false,
+                    'message' => 'Insufficient balance',
+                    'data' => [
+                        'balance' => $profile ? $profile->wallet : 0,
+                        'required' => $amount
+                    ]
+                ], 400);
+            }
+
+            // Generate unique request ID
+            $lagosTime = Carbon::now('Africa/Lagos');
+            $requestId = $lagosTime->format('YmdH') . Str::random(8);
+            $reference = 'TRX' . $lagosTime->format('YmdHis') . Str::random(6);
+
+            // Prepare payload with mandatory fields
+            $payload = [
+                'request_id' => $requestId,
+                'serviceID' => 'jamb',
+                'variation_code' => $request->variation_code,
+                'billersCode' => $request->billersCode,
+                'phone' => $user->phone_number
+            ];
+
+            DB::beginTransaction();
+            try {
+                // Deduct user's balance
+                $profile->decrement('wallet', $amount);
+
+                $response = Http::withHeaders([
+                    'api-key' => env('VT_PASS_API_KEY'),
+                    'secret-key' => env('VT_PASS_SECRET_KEY'),
+                    'Content-Type' => 'application/json'
+                ])->post('https://sandbox.vtpass.com/api/pay', $payload);
+
+                if ($response->successful()) {
+                    $data = $response->json();
+                    Log::info('VTPass JAMB Purchase Response:', $data);
+
+                    if ($data['code'] === '000') {
+                        $txn = $data['content']['transactions'];
+
+                        // Create transaction record
+                        $transaction = new Transaction([
+                            'user_id' => $user->id,
+                            'request_id' => $data['requestId'],
+                            'transaction_id' => $txn['transactionId'] ?? null,
+                            'reference' => $reference,
+                            'amount' => $txn['amount'],
+                            'commission' => $txn['commission'] ?? 0,
+                            'total_amount' => $txn['total_amount'],
+                            'type' => 'jamb_purchase',
+                            'status' => $txn['status'] ?? 'pending',
+                            'service_id' => 'jamb',
+                            'phone' => $user->phone_number,
+                            'product_name' => $txn['product_name'] ?? 'JAMB PIN',
+                            'platform' => $txn['platform'] ?? 'api',
+                            'channel' => $txn['channel'] ?? 'api',
+                            'method' => $txn['method'] ?? 'api',
+                            'response_code' => $data['code'],
+                            'response_message' => $data['response_description'],
+                            'transaction_date' => $data['transaction_date']['date'] ?? now(),
+                            'purchased_code' => $data['purchased_code'] ?? null,
+                            'pin' => $data['Pin'] ?? null
+                        ]);
+
+                        $transaction->save();
+                        DB::commit();
+
+                        return response()->json([
+                            'status' => true,
+                            'message' => 'JAMB PIN purchase successful',
+                            'data' => [
+                                'transaction' => $txn,
+                                'purchased_code' => $data['purchased_code'] ?? null,
+                                'pin' => $data['Pin'] ?? null,
+                                'requestId' => $data['requestId'] ?? $requestId,
+                                'amount' => $data['amount'] ?? $txn['amount'],
+                                'transaction_date' => $data['transaction_date'] ?? now()
+                            ]
+                        ]);
+                    }
+
+                    // If transaction failed, refund the user
+                    $profile->increment('balance', $amount);
+                    DB::commit();
+
+                    $responseMessage = $this->getResponseMessage($data['code']);
+                    return response()->json([
+                        'status' => $responseMessage['status'],
+                        'message' => $responseMessage['message']
+                    ], 400);
+                }
+
+                // If request failed, refund the user
+                $profile->increment('balance', $amount);
+                DB::commit();
+
+                return response()->json([
+                    'status' => false,
+                    'message' => 'Failed to purchase JAMB PIN',
+                    'error' => $response->body()
+                ], $response->status());
+            } catch (\Exception $e) {
+                DB::rollBack();
+                throw $e;
+            }
+        } catch (\Exception $e) {
+            Log::error('Error purchasing JAMB PIN: ' . $e->getMessage());
+            return response()->json([
+                'status' => false,
+                'message' => 'An error occurred while purchasing JAMB PIN',
                 'error' => $e->getMessage()
             ], 500);
         }
