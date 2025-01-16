@@ -9,9 +9,13 @@ class Profile extends Model
 {
     protected $fillable = [
         'user_id',
-        'profile_url',
-        'pin_code',
-        'wallet'
+        'wallet',
+        'kyc_verified'
+    ];
+
+    protected $casts = [
+        'wallet' => 'decimal:2',
+        'kyc_verified' => 'boolean'
     ];
 
     public function user(): BelongsTo

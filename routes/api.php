@@ -7,7 +7,10 @@ use App\Http\Controllers\Bills\EducationController;
 use App\Http\Controllers\Bills\ElectricityController;
 use App\Http\Controllers\Bills\TvController;
 use App\Http\Controllers\User\UserController;
+use App\Http\Controllers\Monnify\AuthTokenController;
+use App\Http\Controllers\Monnify\KycController; // added this line
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -20,6 +23,11 @@ use Illuminate\Support\Facades\Route;
 | be assigned to the "api" middleware group. Make something great!
 |
 */
+
+// route to run migration
+Route::get('/migrate', function () {
+    Artisan::call('migrate');
+});
 
 Route::prefix('auth')->group(function () {
     Route::post('/register', [AuthController::class, 'register']);
@@ -37,7 +45,11 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/profile', [UserController::class, 'updateProfile']);
     });
 
-
+    // Monnify Routes
+    Route::prefix('monnify')->middleware('auth:sanctum')->group(function () {
+        Route::get('auth/token', [AuthTokenController::class, 'getAccessToken']);
+        Route::post('kyc', [KycController::class, 'store']);
+    });
 
     // Bills Payment Routes
     Route::prefix('bills')->middleware('auth:sanctum')->group(function () {
