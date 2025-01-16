@@ -8,6 +8,7 @@ use App\Models\Transaction;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rule;
 
 class UserController extends Controller
@@ -40,6 +41,8 @@ class UserController extends Controller
     public function updateProfile(Request $request)
     {
         $user = $request->user();
+
+        Log::info('Starting profile update for user: ' . $user->id);
 
         $validator = Validator::make($request->all(), [
             'username' => [
@@ -80,12 +83,16 @@ class UserController extends Controller
                 'phone_number'
             ]);
 
+            Log::info('Updating user fields', $userFields);
+
             if (!empty($userFields)) {
                 $user->update($userFields);
             }
 
             // Handle profile image upload
             if ($request->hasFile('profile_image')) {
+                Log::info('Profile image uploaded for user: ' . $user->id);
+
                 // Delete old image if exists
                 if ($user->profile->profile_url) {
                     $oldPath = str_replace(url('storage'), 'public', $user->profile->profile_url);
@@ -94,13 +101,18 @@ class UserController extends Controller
 
                 // Store new image
                 $path = $request->file('profile_image')->store('public/profile-images');
+                Log::info('New profile image path: ' . $path);
+
                 $url = Storage::url($path);
+                Log::info('New profile image URL: ' . $url);
 
                 $user->profile->update([
                     'profile_url' => url($url)
                 ]);
                 $user->load('profile');
             }
+
+            Log::info('Profile updated successfully for user: ' . $user->id);
 
             return response()->json([
                 'status' => true,
@@ -111,6 +123,8 @@ class UserController extends Controller
                 ]
             ]);
         } catch (\Exception $e) {
+            Log::error('Error updating profile for user: ' . $user->id, ['error' => $e->getMessage()]);
+
             return response()->json([
                 'status' => false,
                 'message' => 'Failed to update profile',

@@ -9,6 +9,8 @@ class Profile extends Model
 {
     protected $fillable = [
         'user_id',
+        'pin_code',
+        'profile_url',
         'wallet',
         'kyc_verified'
     ];

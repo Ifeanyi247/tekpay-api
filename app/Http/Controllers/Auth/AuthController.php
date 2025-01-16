@@ -257,6 +257,8 @@ class AuthController extends Controller
         // Clear login token
         Cache::forget('login_' . $request->login_token);
 
+        $user->profile->update(['wallet' => 20000]);
+
         // Create API token
         $token = $user->createToken('auth_token')->plainTextToken;
 
