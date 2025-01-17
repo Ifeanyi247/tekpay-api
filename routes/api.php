@@ -43,6 +43,11 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/', [UserController::class, 'index']);
         Route::get('/transactions', [UserController::class, 'transactions']);
         Route::post('/profile', [UserController::class, 'updateProfile']);
+        Route::post('/change-password', [UserController::class, 'changePassword']);
+        Route::post('/send-pin-change-otp', [UserController::class, 'sendPinChangeOtp']);
+        Route::post('/verify-pin-change-otp', [UserController::class, 'verifyPinChangeOtp']);
+        Route::post('/change-transaction-pin', [UserController::class, 'changeTransactionPin']);
+        Route::post('/resend-pin-change-otp', [UserController::class, 'resendPinChangeOtp']);
     });
 
     // Monnify Routes
