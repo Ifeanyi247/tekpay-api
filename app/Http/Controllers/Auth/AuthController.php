@@ -215,7 +215,8 @@ class AuthController extends Controller
             'message' => 'First step authentication successful. Please verify your PIN.',
             'login_token' => $login_token,
             'username' => $user->username,
-            'profile_url' => $user->profile->profile_url
+            'profile_url' => $user->profile->profile_url,
+            'pin_code' => $user->profile->pin_code
         ]);
     }
 
