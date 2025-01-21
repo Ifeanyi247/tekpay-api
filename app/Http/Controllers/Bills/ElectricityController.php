@@ -110,9 +110,9 @@ class ElectricityController extends Controller
                 ], 400);
             }
 
-            // Generate unique request ID
+            // Generate unique request ID with GMT+1 timezone (Africa/Lagos)
             $lagosTime = Carbon::now('Africa/Lagos');
-            $requestId = $lagosTime->format('YmdH') . Str::random(8);
+            $requestId = $lagosTime->format('YmdHi') . '_' . (string) Str::uuid();
 
             // Prepare payload
             $payload = [
