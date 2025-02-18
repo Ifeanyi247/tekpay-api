@@ -8,7 +8,9 @@ use App\Http\Controllers\Bills\ElectricityController;
 use App\Http\Controllers\Bills\TvController;
 use App\Http\Controllers\User\UserController;
 use App\Http\Controllers\Monnify\AuthTokenController;
-use App\Http\Controllers\Monnify\KycController; // added this line
+use App\Http\Controllers\Monnify\BankVirtualAccountController;
+use App\Http\Controllers\Monnify\KycController;
+use App\Http\Controllers\VTpass\CallbackController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Route;
@@ -54,10 +56,19 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::prefix('monnify')->middleware('auth:sanctum')->group(function () {
         Route::get('auth/token', [AuthTokenController::class, 'getAccessToken']);
         Route::post('kyc', [KycController::class, 'store']);
+        Route::post('/create-wallet', [BankVirtualAccountController::class, 'createWallet']);
     });
+
+    // VTpass Webhook Routes
+    Route::post('/vtpass/webhook', [CallbackController::class, 'handleTransactionUpdate']);
 
     // Bills Payment Routes
     Route::prefix('bills')->middleware('auth:sanctum')->group(function () {
+
+        // get services
+        Route::get('/services/{identifier}', [AirtimeController::class, 'getDataServices']);
+
+
         Route::post('/status', [AirtimeController::class, 'checkTransactionStatus']);
         Route::prefix('airtime')->group(function () {
             Route::post('/', [AirtimeController::class, 'purchaseAirtime']);

@@ -17,7 +17,7 @@ class AirtimeController extends Controller
 {
     use VTPassResponseHandler;
 
-    private $baseUrl = 'https://sandbox.vtpass.com/api';
+    private $baseUrl = 'https://vtpass.com/api';
 
     public function purchaseAirtime(Request $request)
     {
@@ -254,6 +254,33 @@ class AirtimeController extends Controller
             return response()->json([
                 'status' => false,
                 'message' => 'An error occurred while checking transaction status',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Get available data service IDs from VTpass
+     *
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function getDataServices($identifier)
+    {
+        try {
+            $response = Http::get($this->baseUrl . '/services', [
+                'identifier' => $identifier
+            ]);
+
+            return response()->json([
+                'status' => true,
+                'message' => 'Fetched data services successfully',
+                'data' => $response->json()
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error fetching data services: ' . $e->getMessage());
+            return response()->json([
+                'status' => false,
+                'message' => 'Failed to fetch data services',
                 'error' => $e->getMessage()
             ], 500);
         }

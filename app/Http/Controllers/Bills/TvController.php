@@ -17,7 +17,7 @@ class TvController extends Controller
 {
     use VTPassResponseHandler;
 
-    private $baseUrl = 'https://sandbox.vtpass.com/api';
+    private $baseUrl = 'https://vtpass.com/api';
 
     public function getTvVariations($serviceID)
     {

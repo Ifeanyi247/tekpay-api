@@ -17,7 +17,7 @@ class EducationController extends Controller
 {
     use VTPassResponseHandler;
 
-    private $baseUrl = 'https://sandbox.vtpass.com/api';
+    private $baseUrl = 'https://vtpass.com/api';
 
     public function getVariations($serviceID)
     {
@@ -38,7 +38,7 @@ class EducationController extends Controller
                 'api-key' => env('VT_PASS_API_KEY'),
                 'public-key' => env('VT_PASS_PUBLIC_KEY'),
                 'Content-Type' => 'application/json'
-            ])->get('https://sandbox.vtpass.com/api/service-variations', [
+            ])->get('https://vtpass.com/api/service-variations', [
                 'serviceID' => $serviceID
             ]);
 
@@ -125,7 +125,7 @@ class EducationController extends Controller
                 'api-key' => env('VT_PASS_API_KEY'),
                 'secret-key' => env('VT_PASS_SECRET_KEY'),
                 'Content-Type' => 'application/json'
-            ])->post('https://sandbox.vtpass.com/api/pay', $payload);
+            ])->post('https://vtpass.com/api/pay', $payload);
 
             if ($response->successful()) {
                 $data = $response->json();
@@ -228,7 +228,7 @@ class EducationController extends Controller
                 'api-key' => env('VT_PASS_API_KEY'),
                 'secret-key' => env('VT_PASS_SECRET_KEY'),
                 'Content-Type' => 'application/json'
-            ])->post('https://sandbox.vtpass.com/api/merchant-verify', [
+            ])->post('https://vtpass.com/api/merchant-verify', [
                 'billersCode' => $request->billersCode,
                 'serviceID' => 'jamb',
                 'type' => $request->type
@@ -300,7 +300,7 @@ class EducationController extends Controller
                 'api-key' => env('VT_PASS_API_KEY'),
                 'public-key' => env('VT_PASS_PUBLIC_KEY'),
                 'Content-Type' => 'application/json'
-            ])->get('https://sandbox.vtpass.com/api/service-variations', [
+            ])->get('https://vtpass.com/api/service-variations', [
                 'serviceID' => 'jamb'
             ])->json();
 
@@ -358,7 +358,7 @@ class EducationController extends Controller
                     'api-key' => env('VT_PASS_API_KEY'),
                     'secret-key' => env('VT_PASS_SECRET_KEY'),
                     'Content-Type' => 'application/json'
-                ])->post('https://sandbox.vtpass.com/api/pay', $payload);
+                ])->post('https://vtpass.com/api/pay', $payload);
 
                 if ($response->successful()) {
                     $data = $response->json();

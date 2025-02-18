@@ -17,7 +17,7 @@ class ElectricityController extends Controller
 {
     use VTPassResponseHandler;
 
-    private $baseUrl = 'https://sandbox.vtpass.com/api';
+    private $baseUrl = 'https://vtpass.com/api';
 
     public function verifyMeter(Request $request)
     {
@@ -36,7 +36,7 @@ class ElectricityController extends Controller
         }
 
         try {
-            $response = Http::withHeaders([
+            $response = Http::timeout(-1)->withHeaders([
                 'api-key' => env('VT_PASS_API_KEY'),
                 'secret-key' => env('VT_PASS_SECRET_KEY'),
                 'Content-Type' => 'application/json'
