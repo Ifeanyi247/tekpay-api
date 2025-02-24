@@ -11,6 +11,9 @@ use App\Http\Controllers\Monnify\AuthTokenController;
 use App\Http\Controllers\Monnify\BankVirtualAccountController;
 use App\Http\Controllers\Monnify\KycController;
 use App\Http\Controllers\VTpass\CallbackController;
+use App\Http\Controllers\FlutterWave\BvnController;
+use App\Http\Controllers\FlutterWave\BankController;
+use App\Http\Controllers\FlutterWave\VirtualAccountCreation;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Route;
@@ -57,6 +60,21 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('auth/token', [AuthTokenController::class, 'getAccessToken']);
         Route::post('kyc', [KycController::class, 'store']);
         Route::post('/create-wallet', [BankVirtualAccountController::class, 'createWallet']);
+    });
+
+    // Flutterwave Routes
+    Route::prefix('flutterwave')->group(function () {
+        Route::middleware('auth:sanctum')->group(function () {
+            Route::post('/bvn/verify', [BvnController::class, 'verifyBvn']);
+            Route::post('/virtual-account/create', [VirtualAccountCreation::class, 'createVirtualAccount']);
+            Route::post('/bank/verify-account', [BankController::class, 'verifyAccount']);
+            Route::get('/banks/nigeria', [BankController::class, 'getNigerianBanks']);
+            Route::post('/transfer', [BankController::class, 'initiateTransfer']);
+        });
+        
+        // Webhook endpoints (no auth required)
+        Route::post('/virtual-account/webhook', [VirtualAccountCreation::class, 'handleWebhook']);
+        Route::post('/transfer/webhook', [BankController::class, 'handleTransferWebhook'])->name('api.flutterwave.transfer.webhook');
     });
 
     // VTpass Webhook Routes
