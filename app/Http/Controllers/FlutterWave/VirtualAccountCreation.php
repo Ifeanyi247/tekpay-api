@@ -26,7 +26,7 @@ class VirtualAccountCreation extends Controller
             $phonenumber = auth()->user()->phone_number;
             $firstname = auth()->user()->first_name;
             $lastname = auth()->user()->last_name;
-            $amount = 1000;
+            $amount = 500;
 
             $narration = "Tekpay/" . $firstname . " " . $lastname;
 
