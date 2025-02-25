@@ -14,6 +14,7 @@ use App\Http\Controllers\VTpass\CallbackController;
 use App\Http\Controllers\FlutterWave\BvnController;
 use App\Http\Controllers\FlutterWave\BankController;
 use App\Http\Controllers\FlutterWave\VirtualAccountCreation;
+use App\Http\Controllers\Auth\ForgotPasswordController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Route;
@@ -41,6 +42,9 @@ Route::prefix('auth')->group(function () {
     Route::post('/login', [AuthController::class, 'login']);
     Route::post('/verify-pin', [AuthController::class, 'verifyPin']);
     Route::post('/logout', [AuthController::class, 'logout'])->middleware('auth:sanctum');
+    Route::post('/forgot-password', [ForgotPasswordController::class, 'sendResetOtp']);
+    Route::post('/verify-reset-otp', [ForgotPasswordController::class, 'verifyOtp']);
+    Route::post('/reset-password', [ForgotPasswordController::class, 'verifyAndResetPassword']);
 });
 
 Route::middleware('auth:sanctum')->group(function () {

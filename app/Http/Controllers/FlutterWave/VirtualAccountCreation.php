@@ -22,11 +22,16 @@ class VirtualAccountCreation extends Controller
     public function createVirtualAccount(Request $request)
     {
         try {
+
+            $request->validate([
+                'amount' => 'required|numeric',
+            ]);
+
             $email = auth()->user()->email;
             $phonenumber = auth()->user()->phone_number;
             $firstname = auth()->user()->first_name;
             $lastname = auth()->user()->last_name;
-            $amount = 500;
+            $amount = $request->amount;
 
             $narration = "Tekpay/" . $firstname . " " . $lastname;
 
@@ -72,25 +77,12 @@ class VirtualAccountCreation extends Controller
             // Log the incoming webhook payload
             Log::info('Received virtual account webhook', ['payload' => $payload]);
 
-            // Verify if transaction is successful
-            if ($payload['status'] !== 'successful') {
-                Log::warning('Virtual account transaction not successful', [
-                    'status' => $payload['status'],
-                    'tx_ref' => $payload['txRef'],
-                    'amount' => $payload['amount'],
-                    'customer' => $payload['customer'] ?? null,
-                    'entity' => $payload['entity'] ?? null
-                ]);
-
-                return response()->json(['status' => 'error', 'message' => 'Transaction not successful']);
-            }
-
             // Find user by email
-            $user = User::where('email', $payload['customer']['email'])->first();
+            $user = User::where('email', $payload['data']['customer']['email'])->first();
             if (!$user) {
                 Log::error('User not found for virtual account transaction', [
-                    'email' => $payload['customer']['email'],
-                    'tx_ref' => $payload['txRef']
+                    'email' => $payload['data']['customer']['email'],
+                    'tx_ref' => $payload['data']['tx_ref']
                 ]);
                 return response()->json(['status' => 'error', 'message' => 'User not found'], 404);
             }
@@ -101,35 +93,35 @@ class VirtualAccountCreation extends Controller
                 // Create transaction record
                 $transaction = Transaction::create([
                     'user_id' => $user->id,
-                    'request_id' => $payload['id'],
-                    'transaction_id' => $payload['id'],
-                    'reference' => $payload['txRef'],
-                    'amount' => $payload['amount'],
-                    'total_amount' => $payload['charged_amount'],
-                    'commission' => $payload['appfee'],
+                    'request_id' => $payload['data']['id'],
+                    'transaction_id' => $payload['data']['id'],
+                    'reference' => $payload['data']['tx_ref'],
+                    'amount' => $payload['data']['amount'],
+                    'total_amount' => $payload['data']['charged_amount'],
+                    'commission' => $payload['data']['app_fee'],
                     'type' => 'deposit',
                     'status' => 'successful',
                     'platform' => 'flutterwave',
                     'channel' => 'virtual_account',
                     'method' => 'bank_transfer',
                     'response_code' => '00',
-                    'response_message' => 'Successful',
-                    'transaction_date' => $payload['createdAt'],
-                    'phone' => $payload['customer']['phone'],
+                    'response_message' => $payload['data']['processor_response'],
+                    'transaction_date' => $payload['data']['created_at'],
+                    'phone' => $user->phone_number,
                     'service_id' => "Deposit",
                     'product_name' => "Deposit",
                 ]);
 
                 // Update user's wallet balance
-                $user->profile->increment('wallet', $payload['amount']);
+                $user->profile->increment('wallet', $payload['data']['amount']);
 
                 DB::commit();
 
                 // Log successful transaction
                 Log::info('Virtual account deposit successful', [
                     'user_id' => $user->id,
-                    'amount' => $payload['amount'],
-                    'reference' => $payload['txRef']
+                    'amount' => $payload['data']['amount'],
+                    'reference' => $payload['data']['tx_ref']
                 ]);
 
                 return response()->json([
