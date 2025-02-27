@@ -124,7 +124,7 @@ class ElectricityController extends Controller
                 'phone' => $request->phone
             ];
 
-            $response = Http::withHeaders([
+            $response = Http::timeout(-1)->withHeaders([
                 'api-key' => env('VT_PASS_API_KEY'),
                 'secret-key' => env('VT_PASS_SECRET_KEY'),
                 'Content-Type' => 'application/json'
