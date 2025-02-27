@@ -119,4 +119,7 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::post('/jamb/purchase', [EducationController::class, 'purchaseJamb']);
         });
     });
+
+    Route::post('/logout', [AuthController::class, 'logout']);
+    Route::delete('/delete-account', [AuthController::class, 'deleteAccount']);
 });

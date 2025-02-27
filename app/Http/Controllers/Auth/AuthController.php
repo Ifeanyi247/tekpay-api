@@ -4,14 +4,17 @@ namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
 use App\Mail\SendOtpMail;
+use App\Models\PasswordHistory;
 use App\Models\User;
 use App\Models\Profile;
+use App\Models\Transaction;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
 class AuthController extends Controller
@@ -282,5 +285,71 @@ class AuthController extends Controller
             'status' => true,
             'message' => 'Logged out successfully'
         ]);
+    }
+
+    /**
+     * Delete user account and all associated data
+     */
+    public function deleteAccount(Request $request)
+    {
+        try {
+            $user = $request->user();
+
+            // // Validate user's password to confirm deletion
+            // $validator = Validator::make($request->all(), [
+            //     'password' => 'required|string'
+            // ]);
+
+            // if ($validator->fails()) {
+            //     return response()->json([
+            //         'status' => false,
+            //         'message' => 'Validation error',
+            //         'errors' => $validator->errors()
+            //     ], 422);
+            // }
+
+            // // Verify password
+            // if (!Hash::check($request->password, $user->password)) {
+            //     return response()->json([
+            //         'status' => false,
+            //         'message' => 'Invalid password'
+            //     ], 401);
+            // }
+
+            DB::beginTransaction();
+            try {
+                // Delete user's transactions
+                Transaction::where('user_id', $user->id)->delete();
+
+                // Delete user's password history
+                PasswordHistory::where('user_id', $user->id)->delete();
+
+                // Delete user's profile
+                $user->profile()->delete();
+
+                // Delete user's tokens
+                $user->tokens()->delete();
+
+                // Finally delete the user
+                $user->delete();
+
+                DB::commit();
+
+                return response()->json([
+                    'status' => true,
+                    'message' => 'Account deleted successfully'
+                ]);
+            } catch (\Exception $e) {
+                DB::rollBack();
+                throw $e;
+            }
+        } catch (\Exception $e) {
+            Log::error('Error deleting user account: ' . $e->getMessage());
+            return response()->json([
+                'status' => false,
+                'message' => 'Failed to delete account',
+                'error' => $e->getMessage()
+            ], 500);
+        }
     }
 }

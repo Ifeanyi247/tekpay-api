@@ -202,6 +202,7 @@ class AirtimeController extends Controller
 
                 $responseInfo = $this->getResponseMessage($data['code']);
                 $transactions = $data['content']['transactions'] ?? [];
+                $purchased_code = $data['purchased_code'] ?? '';
 
                 // Update transaction record if exists
                 $transaction = Transaction::where('request_id', $request->request_id)->first();
@@ -231,7 +232,8 @@ class AirtimeController extends Controller
                             'total_amount' => $transactions['total_amount'],
                             'channel' => $transactions['channel'],
                             'platform' => $transactions['platform'],
-                            'method' => $transactions['method']
+                            'method' => $transactions['method'],
+                            'purchased_code' => $purchased_code
                         ]
                     ]);
                 }

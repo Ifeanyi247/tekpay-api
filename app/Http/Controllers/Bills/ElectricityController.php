@@ -154,7 +154,7 @@ class ElectricityController extends Controller
                             'amount' => $request->amount,
                             'commission' => $txn['commission'] ?? 0,
                             'total_amount' => $txn['total_amount'] ?? $request->amount,
-                            'type' => 'Electricity Bill - ' . $request->serviceID,
+                            'type' => 'electricity',
                             'status' => 'success',
                             'service_id' => $request->serviceID,
                             'phone' => $request->phone,
@@ -163,6 +163,7 @@ class ElectricityController extends Controller
                             'channel' => $txn['channel'] ?? 'api',
                             'method' => $txn['method'] ?? 'api',
                             'response_code' => $data['code'],
+                            'purchased_code' => $data['token'],
                             'response_message' => $data['response_description'],
                             'transaction_date' => now()
                         ]);
