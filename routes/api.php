@@ -57,6 +57,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/verify-pin-change-otp', [UserController::class, 'verifyPinChangeOtp']);
         Route::post('/change-transaction-pin', [UserController::class, 'changeTransactionPin']);
         Route::post('/resend-pin-change-otp', [UserController::class, 'resendPinChangeOtp']);
+        Route::get('/transfers', [UserController::class, 'getTransferTransactions']);
     });
 
     // Monnify Routes
@@ -75,7 +76,7 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::get('/banks/nigeria', [BankController::class, 'getNigerianBanks']);
             Route::post('/transfer', [BankController::class, 'initiateTransfer']);
         });
-        
+
         // Webhook endpoints (no auth required)
         Route::post('/virtual-account/webhook', [VirtualAccountCreation::class, 'handleWebhook']);
         Route::post('/transfer/webhook', [BankController::class, 'handleTransferWebhook'])->name('api.flutterwave.transfer.webhook');

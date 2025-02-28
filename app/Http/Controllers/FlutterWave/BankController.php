@@ -4,6 +4,7 @@ namespace App\Http\Controllers\FlutterWave;
 
 use App\Http\Controllers\Controller;
 use App\Models\Transaction;
+use App\Models\TransferTransaction;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
@@ -134,6 +135,7 @@ class BankController extends Controller
             // Validate request
             $request->validate([
                 'account_bank' => 'required|string',
+                'bank' => 'required|string',
                 'account_number' => 'required|string|size:10',
                 'account_name' => 'required|string|max:100',
                 'amount' => 'required|numeric|min:100',
@@ -223,6 +225,16 @@ class BankController extends Controller
             $transaction->update([
                 'transaction_id' => $response->json()['data']['id'] ?? null,
                 'response_message' => 'Transfer initiated successfully'
+            ]);
+
+            // create transfertransaction data
+            TransferTransaction::create([
+                'user_id' => $user->id,
+                'account_name' => $request->account_name,
+                'account_number' => $request->account_number,
+                'amount' => $request->amount,
+                'account_bank' => $request->bank,
+                'account_code' => $request->account_bank,
             ]);
 
             // Commit the transaction

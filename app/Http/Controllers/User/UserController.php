@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Cache;
 use App\Mail\SendOtpMail;
+use App\Models\TransferTransaction;
 use Illuminate\Validation\Rule;
 
 class UserController extends Controller
@@ -356,5 +357,22 @@ class UserController extends Controller
             'status' => false,
             'message' => 'No active OTP request found. Please initiate a new PIN change request.'
         ], 400);
+    }
+
+
+    public function getTransferTransactions()
+    {
+        try {
+            $transfers = TransferTransaction::where('user_id', auth()->id())->latest()->get();
+            return response([
+                'status' => true,
+                'data' => $transfers
+            ], 200);
+        } catch (\Exception $e) {
+            return response([
+                'status' => false,
+                'error' => $e->getMessage()
+            ], 500);
+        }
     }
 }
