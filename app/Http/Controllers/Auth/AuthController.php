@@ -15,6 +15,7 @@ use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
 class AuthController extends Controller
@@ -30,7 +31,7 @@ class AuthController extends Controller
             'phone_number' => 'required|string|unique:users,phone_number',
             'password' => 'required|string|min:6',
             'confirm_password' => 'required|same:password',
-            'referred_by' => 'nullable|string|exists:users,username'
+            'referral_code' => 'nullable|string|exists:profiles,referral_code'
         ]);
 
         if ($validator->fails()) {
@@ -45,9 +46,14 @@ class AuthController extends Controller
         $otp = str_pad(random_int(0, 9999), 4, '0', STR_PAD_LEFT);
 
         // Store OTP in cache with email as key (valid for 10 minutes)
+        $userData = $request->all();
+        if ($request->has('referral_code')) {
+            $userData['referred_by'] = $request->referral_code;
+        }
+
         Cache::put('registration_otp_' . $request->email, [
             'otp' => $otp,
-            'user_data' => $request->all()
+            'user_data' => $userData
         ], 600);
 
         // Send OTP email
@@ -127,9 +133,9 @@ class AuthController extends Controller
             ], 422);
         }
 
-        $cached_data = Cache::get('pin_token_' . $request->pin_token);
+        $cachedData = Cache::get('pin_token_' . $request->pin_token);
 
-        if (!$cached_data) {
+        if (!$cachedData) {
             return response()->json([
                 'status' => false,
                 'message' => 'Invalid or expired token. Please verify your email again.'
@@ -137,7 +143,7 @@ class AuthController extends Controller
         }
 
         try {
-            $user_data = $cached_data['user_data'];
+            $user_data = $cachedData['user_data'];
 
             // Create user
             $user = User::create([
@@ -146,23 +152,71 @@ class AuthController extends Controller
                 'last_name' => $user_data['last_name'],
                 'email' => $user_data['email'],
                 'phone_number' => $user_data['phone_number'],
-                'password' => Hash::make($user_data['password']),
-                'referred_by' => $user_data['referred_by'] ?? null
+                'password' => Hash::make($user_data['password'])
             ]);
 
+            // Generate unique referral code
+            $referralCode = strtoupper(Str::random(8));
+            while (Profile::where('referral_code', $referralCode)->exists()) {
+                $referralCode = strtoupper(Str::random(8));
+            }
+
+            // Find referrer if username was provided
+            $referrerId = null;
+            if (!empty($user_data['referred_by'])) {
+                $referrerProfile = Profile::where('referral_code', $user_data['referred_by'])->first();
+                if ($referrerProfile) {
+                    $referrerId = $referrerProfile->user_id;
+
+                    // Update referrer's stats and wallet
+                    Profile::where('user_id', $referrerId)->update([
+                        'referral_count' => DB::raw('referral_count + 1'),
+                        'referral_earnings' => DB::raw('referral_earnings + 10'),
+                        'wallet' => DB::raw('wallet + 10')
+                    ]);
+
+                    // Create transaction record for referral bonus
+                    // generate transaction_id
+                    $transactionId = 'REF_' . time() . '_' . Str::random(8);
+
+                    Transaction::create([
+                        'user_id' => $referrerId,
+                        'request_id' => $transactionId,
+                        'transaction_id' => $transactionId,
+                        'reference' => 'REF_BONUS_' . $user->id,
+                        'amount' => 10,
+                        'total_amount' => 10,
+                        'type' => 'referral_bonus',
+                        'status' => 'success',
+                        'platform' => 'system',
+                        'channel' => 'referral',
+                        'method' => 'system',
+                        'service_id' => 'Referral',
+                        'product_name' => 'Referral Bonus',
+                        'response_code' => '00',
+                        'response_message' => 'Referral bonus credited successfully',
+                        'phone' => $referrerProfile->user->phone_number
+                    ]);
+                }
+            }
+
             // Create profile with pin
-            $profile = Profile::create([
+            Profile::create([
+                'profile_url' => "https://ui-avatars.com/api/?name=" . $user->first_name . '+' . $user->last_name,
                 'user_id' => $user->id,
                 'pin_code' => (int) $request->pin_code,
                 'wallet' => 0,
-                'profile_url' => 'https://ui-avatars.com/api/?name=' . urlencode($user->first_name . ' ' . $user->last_name)
+                'referral_code' => $referralCode,
+                'referred_by' => $referrerId,
+                'referral_count' => 0,
+                'referral_earnings' => 0
             ]);
+
+            // Clear pin token from cache
+            Cache::forget('pin_token_' . $request->pin_token);
 
             // Load the profile relationship
             $user->load('profile');
-
-            // Clear cached data
-            Cache::forget('pin_token_' . $request->pin_token);
 
             // Generate API token for immediate login
             $token = $user->createToken('auth_token')->plainTextToken;
@@ -172,7 +226,7 @@ class AuthController extends Controller
                 'message' => 'Registration completed successfully',
                 'data' => [
                     'user' => $user,
-                    'profile' => $profile,
+                    'profile' => $user->profile,
                     'token' => $token
                 ]
             ]);
@@ -210,13 +264,13 @@ class AuthController extends Controller
         }
 
         // Store user ID in cache for PIN verification
-        $login_token = bin2hex(random_bytes(32));
-        Cache::put('login_' . $login_token, $user->id, 300); // Valid for 5 minutes
+        $loginToken = bin2hex(random_bytes(32));
+        Cache::put('login_' . $loginToken, $user->id, 300); // Valid for 5 minutes
 
         return response()->json([
             'status' => true,
             'message' => 'First step authentication successful. Please verify your PIN.',
-            'login_token' => $login_token,
+            'login_token' => $loginToken,
             'username' => $user->username,
             'profile_url' => $user->profile->profile_url,
             'pin_code' => $user->profile->pin_code
@@ -238,16 +292,16 @@ class AuthController extends Controller
             ], 422);
         }
 
-        $user_id = Cache::get('login_' . $request->login_token);
+        $userId = Cache::get('login_' . $request->login_token);
 
-        if (!$user_id) {
+        if (!$userId) {
             return response()->json([
                 'status' => false,
                 'message' => "Time's up. Please login again."
             ], 401);
         }
 
-        $user = User::with('profile')->find($user_id);
+        $user = User::with('profile')->find($userId);
         $profile = $user->profile;
 
         if (!$profile || $profile->pin_code !== (int) $request->pin_code) {

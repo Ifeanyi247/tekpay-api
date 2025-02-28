@@ -12,12 +12,16 @@ class Profile extends Model
         'pin_code',
         'profile_url',
         'wallet',
-        'kyc_verified'
+        'transaction_pin',
+        'referral_code',
+        'referred_by',
+        'referral_count',
+        'referral_earnings'
     ];
 
     protected $casts = [
         'wallet' => 'decimal:2',
-        'kyc_verified' => 'boolean'
+        'referral_earnings' => 'decimal:2'
     ];
 
     public function user(): BelongsTo

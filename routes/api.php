@@ -58,6 +58,8 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/change-transaction-pin', [UserController::class, 'changeTransactionPin']);
         Route::post('/resend-pin-change-otp', [UserController::class, 'resendPinChangeOtp']);
         Route::get('/transfers', [UserController::class, 'getTransferTransactions']);
+        Route::get('/referrals', [UserController::class, 'getReferralStats']);
+        Route::post('/generate-referral-codes', [UserController::class, 'generateReferralCodes']);
     });
 
     // Monnify Routes

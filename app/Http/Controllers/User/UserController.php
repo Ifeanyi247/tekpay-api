@@ -15,6 +15,9 @@ use Illuminate\Support\Facades\Cache;
 use App\Mail\SendOtpMail;
 use App\Models\TransferTransaction;
 use Illuminate\Validation\Rule;
+use Illuminate\Support\Str;
+use Illuminate\Support\Facades\DB;
+use App\Models\Profile;
 
 class UserController extends Controller
 {
@@ -371,6 +374,99 @@ class UserController extends Controller
         } catch (\Exception $e) {
             return response([
                 'status' => false,
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Get user's referral statistics
+     */
+    public function getReferralStats()
+    {
+        try {
+            $user = auth()->user();
+            $profile = $user->profile;
+
+            // Get list of referred users with their profiles
+            $referredUsers = User::whereHas('profile', function ($query) use ($user) {
+                $query->where('referred_by', $user->id);
+            })
+                ->with('profile')
+                ->get()
+                ->map(function ($referredUser) {
+                    return [
+                        'name' => $referredUser->first_name . ' ' . $referredUser->last_name,
+                        'email' => $referredUser->email,
+                        'phone' => $referredUser->phone_number,
+                        'username' => $referredUser->username,
+                        'joined_at' => $referredUser->created_at->format('Y-m-d H:i:s'),
+                        'wallet_balance' => $referredUser->profile->wallet
+                    ];
+                });
+
+            return response()->json([
+                'status' => true,
+                'data' => [
+                    'referral_code' => $profile->referral_code,
+                    'total_referrals' => $profile->referral_count,
+                    'total_earnings' => $profile->referral_earnings,
+                    'referral_link' => config('app.frontend_url') . '/register?ref=' . $profile->referral_code,
+                    'referred_users' => $referredUsers
+                ]
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error getting referral stats: ' . $e->getMessage());
+            return response()->json([
+                'status' => false,
+                'message' => 'Failed to get referral statistics',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Generate referral codes for users who don't have one
+     */
+    public function generateReferralCodes()
+    {
+        try {
+            DB::beginTransaction();
+
+            $profiles = Profile::whereNull('referral_code')->get();
+            $count = 0;
+
+            foreach ($profiles as $profile) {
+                // Generate unique referral code
+                $referralCode = strtoupper(Str::random(8));
+                while (Profile::where('referral_code', $referralCode)->exists()) {
+                    $referralCode = strtoupper(Str::random(8));
+                }
+
+                $profile->update([
+                    'referral_code' => $referralCode,
+                    'referral_count' => 0,
+                    'referral_earnings' => 0
+                ]);
+
+                $count++;
+            }
+
+            DB::commit();
+
+            return response()->json([
+                'status' => true,
+                'message' => 'Referral codes generated successfully',
+                'data' => [
+                    'users_updated' => $count
+                ]
+            ]);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('Error generating referral codes: ' . $e->getMessage());
+            return response()->json([
+                'status' => false,
+                'message' => 'Failed to generate referral codes',
                 'error' => $e->getMessage()
             ], 500);
         }
