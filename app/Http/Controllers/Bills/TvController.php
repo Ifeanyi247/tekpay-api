@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Bills;
 
 use App\Http\Controllers\Controller;
 use App\Models\Transaction;
+use App\Services\NotificationService;
 use App\Traits\VTPassResponseHandler;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -16,6 +17,13 @@ use Illuminate\Support\Str;
 class TvController extends Controller
 {
     use VTPassResponseHandler;
+
+    protected $notificationService;
+
+    public function __construct(NotificationService $notificationService)
+    {
+        $this->notificationService = $notificationService;
+    }
 
     private $baseUrl = 'https://vtpass.com/api';
 
@@ -232,7 +240,7 @@ class TvController extends Controller
                         }
 
                         // Create transaction record
-                        Transaction::create([
+                        $transaction = Transaction::create([
                             'user_id' => $user->id,
                             'request_id' => $requestId,
                             'transaction_id' => $txn['transactionId'],
@@ -252,6 +260,9 @@ class TvController extends Controller
                             'response_message' => $data['response_description'],
                             'transaction_date' => now()
                         ]);
+
+                        // Send notification
+                        $this->notificationService->notifyTransaction($user->id, $transaction);
 
                         DB::commit();
 

@@ -47,4 +47,8 @@ return [
         'encryption_key' => env('FLUTTERWAVE_ENCRYPTION_KEY'),
     ],
 
+    'fcm' => [
+        'project_id' => env('FIREBASE_PROJECT_ID'),
+    ],
+
 ];

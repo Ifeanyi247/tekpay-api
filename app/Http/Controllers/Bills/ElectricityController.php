@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Bills;
 
 use App\Http\Controllers\Controller;
 use App\Models\Transaction;
+use App\Services\NotificationService;
 use App\Traits\VTPassResponseHandler;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -16,6 +17,13 @@ use Illuminate\Support\Str;
 class ElectricityController extends Controller
 {
     use VTPassResponseHandler;
+
+    protected $notificationService;
+
+    public function __construct(NotificationService $notificationService)
+    {
+        $this->notificationService = $notificationService;
+    }
 
     private $baseUrl = 'https://vtpass.com/api';
 
@@ -146,7 +154,7 @@ class ElectricityController extends Controller
                         $txn = $data['content']['transactions'];
 
                         // Create transaction record
-                        Transaction::create([
+                        $transaction = Transaction::create([
                             'user_id' => $user->id,
                             'request_id' => $requestId,
                             'transaction_id' => $txn['transactionId'],
@@ -167,6 +175,9 @@ class ElectricityController extends Controller
                             'response_message' => $data['response_description'],
                             'transaction_date' => now()
                         ]);
+
+                        // Send notification
+                        $this->notificationService->notifyTransaction($user->id, $transaction);
 
                         DB::commit();
 

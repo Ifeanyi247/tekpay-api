@@ -15,6 +15,9 @@ use App\Http\Controllers\FlutterWave\BvnController;
 use App\Http\Controllers\FlutterWave\BankController;
 use App\Http\Controllers\FlutterWave\VirtualAccountCreation;
 use App\Http\Controllers\Auth\ForgotPasswordController;
+use App\Http\Controllers\DeviceTokenController;
+use App\Http\Controllers\NotificationController; // Added this line
+use App\Services\NotificationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Route;
@@ -35,6 +38,13 @@ Route::get('/migrate', function () {
     Artisan::call('migrate');
 });
 
+// Webhook endpoints (no auth required)
+Route::post('/virtual-account/webhook', [VirtualAccountCreation::class, 'handleWebhook']);
+Route::post('/transfer/webhook', [BankController::class, 'handleTransferWebhook'])->name('api.flutterwave.transfer.webhook');
+
+// VTpass Webhook Routes
+Route::post('/vtpass/webhook', [CallbackController::class, 'handleTransactionUpdate']);
+
 Route::prefix('auth')->group(function () {
     Route::post('/register', [AuthController::class, 'register']);
     Route::post('/verify-otp', [AuthController::class, 'verifyOtp']);
@@ -46,6 +56,14 @@ Route::prefix('auth')->group(function () {
     Route::post('/verify-reset-otp', [ForgotPasswordController::class, 'verifyOtp']);
     Route::post('/reset-password', [ForgotPasswordController::class, 'verifyAndResetPassword']);
 });
+
+// no auth reset pin
+
+Route::post('/send-pin-change-otp', [AuthController::class, 'sendPinChangeOtpNoAuth']);
+Route::post('/verify-pin-change-otp', [AuthController::class, 'verifyPinChangeOtpNoAuth']);
+Route::post('/change-transaction-pin', [AuthController::class, 'changeTransactionPinNoAuth']);
+Route::post('/resend-pin-change-otp', [AuthController::class, 'resendPinChangeOtpNoAuth']);
+
 
 Route::middleware('auth:sanctum')->group(function () {
     Route::prefix('user')->group(function () {
@@ -123,6 +141,70 @@ Route::middleware('auth:sanctum')->group(function () {
         });
     });
 
+    // Notification routes
+    Route::middleware('auth:sanctum')->group(function () {
+        Route::get('/notifications', [NotificationController::class, 'index']);
+        Route::post('/notifications/mark-read', [NotificationController::class, 'markAsRead']);
+        Route::post('/notifications/mark-all-read', [NotificationController::class, 'markAllAsRead']);
+        Route::get('/notifications/unread-count', [NotificationController::class, 'unreadCount']);
+    });
+
+    // Device token routes
+    Route::middleware('auth:sanctum')->group(function () {
+        Route::post('/device-token', [DeviceTokenController::class, 'store']);
+        Route::delete('/device-token', [DeviceTokenController::class, 'destroy']);
+    });
+
     Route::post('/logout', [AuthController::class, 'logout']);
     Route::delete('/delete-account', [AuthController::class, 'deleteAccount']);
+
+    // Test Routes (Remove in production)
+    Route::middleware('auth:sanctum')->group(function () {
+        Route::post('/test/notification', function (Request $request) {
+            try {
+                $user = auth()->user();
+                $notificationService = app(NotificationService::class);
+
+                Log::info('Test notification request', [
+                    'user_id' => $user->id,
+                    'data' => $request->all()
+                ]);
+
+                $testTransaction = (object)[
+                    'id' => 'TEST_' . time(),
+                    'transaction_id' => 'TEST_' . time(),
+                    'reference' => 'TEST_REF_' . time(),
+                    'amount' => 1000,
+                    'type' => 'test_transaction',
+                    'status' => 'success'
+                ];
+
+                $result = $notificationService->notifyTransaction(
+                    $user->id,
+                    $testTransaction
+                );
+
+                Log::info('Test notification sent', [
+                    'user_id' => $user->id,
+                    'result' => $result
+                ]);
+
+                return response()->json([
+                    'status' => true,
+                    'message' => 'Test notification sent successfully',
+                    'result' => $result
+                ]);
+            } catch (\Exception $e) {
+                Log::error('Test notification failed', [
+                    'error' => $e->getMessage(),
+                    'trace' => $e->getTraceAsString()
+                ]);
+
+                return response()->json([
+                    'status' => false,
+                    'message' => 'Failed to send test notification: ' . $e->getMessage()
+                ], 500);
+            }
+        });
+    });
 });

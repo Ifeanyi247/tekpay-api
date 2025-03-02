@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Bills;
 
 use App\Http\Controllers\Controller;
 use App\Models\Transaction;
+use App\Services\NotificationService;
 use App\Traits\VTPassResponseHandler;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -16,6 +17,13 @@ use Carbon\Carbon;
 class AirtimeController extends Controller
 {
     use VTPassResponseHandler;
+
+    protected $notificationService;
+
+    public function __construct(NotificationService $notificationService)
+    {
+        $this->notificationService = $notificationService;
+    }
 
     private $baseUrl = 'https://vtpass.com/api';
 
@@ -77,7 +85,7 @@ class AirtimeController extends Controller
                     $transactions = $data['content']['transactions'] ?? [];
 
                     // Create transaction record
-                    $transaction = new Transaction([
+                    $transaction = Transaction::create([
                         'user_id' => $user->id,
                         'request_id' => $data['requestId'],
                         'transaction_id' => $transactions['transactionId'] ?? null,
@@ -98,6 +106,9 @@ class AirtimeController extends Controller
                         'transaction_date' => $data['transaction_date']['date'] ?? now()
                     ]);
 
+                    // Send notification
+                    $this->notificationService->notifyTransaction($user->id, $transaction);
+
                     // Return appropriate response based on status code
                     if ($this->isSuccess($data['code'])) {
                         // Deduct from profile balance
@@ -106,7 +117,6 @@ class AirtimeController extends Controller
                             throw new \Exception('Failed to deduct balance');
                         }
 
-                        $transaction->save();
                         DB::commit();
 
                         return response()->json([
@@ -130,7 +140,6 @@ class AirtimeController extends Controller
                     }
 
                     if ($this->isProcessing($data['code'])) {
-                        $transaction->save();
                         DB::commit();
 
                         return response()->json([
