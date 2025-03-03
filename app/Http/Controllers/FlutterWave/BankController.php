@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Transaction;
 use App\Models\TransferTransaction;
 use App\Models\User;
+use App\Services\NotificationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -320,6 +321,202 @@ class BankController extends Controller
             return response()->json([
                 'status' => 'error',
                 'message' => 'Internal server error'
+            ], 500);
+        }
+    }
+
+    /**
+     * Search for a user by email or username
+     *
+     * @param Request $request
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function searchUser(Request $request)
+    {
+        try {
+            $validated = $request->validate([
+                'search' => 'required|string|min:3',
+            ]);
+
+            $search = $validated['search'];
+
+            $user = User::where(function ($query) use ($search) {
+                $query->where('email', 'LIKE', "%{$search}%")
+                    ->orWhere('username', 'LIKE', "%{$search}%")
+                    ->orWhere('first_name', 'LIKE', "%{$search}%")
+                    ->orWhere('last_name', 'LIKE', "%{$search}%");
+            })
+                ->where('id', '!=', auth()->id()) // Exclude current user
+                ->select(['id', 'first_name', 'last_name', 'email']) // Only select necessary fields
+                ->first();
+
+            if (!$user) {
+                return response()->json([
+                    'status' => false,
+                    'message' => 'User not found'
+                ], 404);
+            }
+
+            return response()->json([
+                'status' => true,
+                'message' => 'User found successfully',
+                'data' => [
+                    'id' => $user->id,
+                    'first_name' => $user->first_name,
+                    'last_name' => $user->last_name,
+                    'email' => $user->email,
+                ]
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error searching for user', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+
+            return response()->json([
+                'status' => false,
+                'message' => 'An error occurred while searching for user',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Transfer money to another user in the app
+     *
+     * @param Request $request
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function inAppTransfer(Request $request)
+    {
+        try {
+            $validated = $request->validate([
+                'recipient_id' => 'required|exists:users,id',
+                'amount' => 'required|numeric|min:100',
+                'narration' => 'nullable|string|max:100'
+            ]);
+
+            $sender = auth()->user();
+            $recipient = User::findOrFail($validated['recipient_id']);
+            $amount = $validated['amount'];
+            $narration = $validated['narration'] ?? 'In-app transfer';
+
+            // Check if sender has sufficient balance
+            if ($sender->profile->wallet < $amount) {
+                return response()->json([
+                    'status' => false,
+                    'message' => 'Insufficient balance'
+                ], 400);
+            }
+
+            // Start database transaction
+            DB::beginTransaction();
+            try {
+                // Generate request ID and references
+                $requestId = 'REQ_' . Str::random(10);
+                $senderReference = 'TRF_' . Str::random(10);
+                $recipientReference = 'RCV_' . Str::random(10);
+
+                // Transfer Transaction record
+                TransferTransaction::create([
+                    'user_id' => $sender->id,
+                    'account_name' => $recipient->first_name . ' ' . $recipient->last_name,
+                    'account_number' => "",
+                    'amount' => $amount,
+                    'account_bank' => "Tekpay",
+                    'account_code' => "Tekpay"
+                ]);
+
+                // Create transaction record
+                $transaction = Transaction::create([
+                    'user_id' => $sender->id,
+                    'request_id' => $requestId,
+                    'transaction_id' => Str::random(15),
+                    'reference' => $senderReference,
+                    'amount' => $amount,
+                    'commission' => 0,
+                    'total_amount' => $amount,
+                    'type' => 'transfer',
+                    'status' => 'success',
+                    'service_id' => 'WALLET_TRANSFER',
+                    'phone' => $sender->phone_number,
+                    'product_name' => 'Wallet Transfer',
+                    'platform' => 'wallet',
+                    'channel' => 'wallet',
+                    'method' => 'wallet',
+                    'response_code' => '00',
+                    'response_message' => 'Successful',
+                    'transaction_date' => now(),
+                    'purchased_code' => null,
+                    'pin' => null,
+                    'cards' => null
+                ]);
+
+                // Create recipient's transaction record
+                $recipientTransaction = Transaction::create([
+                    'user_id' => $recipient->id,
+                    'request_id' => 'RCV_' . $requestId,
+                    'transaction_id' => Str::random(15),
+                    'reference' => $recipientReference,
+                    'amount' => $amount,
+                    'commission' => 0,
+                    'total_amount' => $amount,
+                    'type' => 'credit',
+                    'status' => 'success',
+                    'service_id' => 'WALLET_TRANSFER',
+                    'phone' => $recipient->phone_number,
+                    'product_name' => 'Wallet Transfer',
+                    'platform' => 'wallet',
+                    'channel' => 'wallet',
+                    'method' => 'wallet',
+                    'response_code' => '00',
+                    'response_message' => 'Successful',
+                    'transaction_date' => now(),
+                    'purchased_code' => null,
+                    'pin' => null,
+                    'cards' => null
+                ]);
+
+                // Update balances
+                $sender->profile->decrement('wallet', $amount);
+                $recipient->profile->increment('wallet', $amount);
+
+                DB::commit();
+
+                // Send notifications
+                app(NotificationService::class)->notifyTransaction($sender->id, $transaction);
+                app(NotificationService::class)->notifyTransaction($recipient->id, $recipientTransaction);
+
+                // Refresh sender to get updated wallet balance
+                $sender->refresh();
+
+                return response()->json([
+                    'status' => true,
+                    'message' => 'Transfer successful',
+                    'data' => [
+                        'transaction' => $senderReference,
+                        'amount' => number_format($amount, 2),
+                        'recipient' => [
+                            'id' => $recipient->id,
+                            'name' => $recipient->first_name . ' ' . $recipient->last_name
+                        ],
+                        'balance' => number_format($sender->profile->wallet, 2)
+                    ]
+                ]);
+            } catch (\Exception $e) {
+                DB::rollBack();
+                throw $e;
+            }
+        } catch (\Exception $e) {
+            Log::error('Error processing in-app transfer', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+
+            return response()->json([
+                'status' => false,
+                'message' => 'An error occurred while processing the transfer',
+                'error' => $e->getMessage()
             ], 500);
         }
     }

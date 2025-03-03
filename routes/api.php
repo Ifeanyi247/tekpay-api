@@ -141,6 +141,15 @@ Route::middleware('auth:sanctum')->group(function () {
         });
     });
 
+    // Bank routes
+    Route::middleware('auth:sanctum')->group(function () {
+        Route::get('/banks', [BankController::class, 'getNigerianBanks']);
+        Route::post('/bank/resolve', [BankController::class, 'resolveBankAccount']);
+        Route::post('/bank/transfer', [BankController::class, 'initiateTransfer']);
+        Route::get('/bank/search-user', [BankController::class, 'searchUser']);
+        Route::post('/bank/in-app-transfer', [BankController::class, 'inAppTransfer']);
+    });
+
     // Notification routes
     Route::middleware('auth:sanctum')->group(function () {
         Route::get('/notifications', [NotificationController::class, 'index']);

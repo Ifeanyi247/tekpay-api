@@ -31,7 +31,7 @@ class Transaction extends Model
         'transaction_date',
         'purchased_code',
         'pin',
-        'cards'
+        'cards',
     ];
 
     protected $casts = [

@@ -60,17 +60,28 @@ class PushNotificationService
                     'title' => $title,
                     'body' => $body
                 ],
-                'data' => $data,
+                'data' => array_merge($data, [
+                    'title' => $title,
+                    'body' => $body,
+                    'click_action' => 'FLUTTER_NOTIFICATION_CLICK'
+                ]),
                 'android' => [
                     'priority' => 'high',
                     'notification' => [
-                        'sound' => 'default'
+                        'sound' => 'default',
+                        'channel_id' => 'high_importance_channel',
+                        'priority' => 'high',
+                        'notification_priority' => 'PRIORITY_HIGH',
+                        'default_sound' => true,
+                        'default_vibrate_timings' => true,
+                        'default_light_settings' => true
                     ]
                 ],
                 'apns' => [
                     'payload' => [
                         'aps' => [
-                            'sound' => 'default'
+                            'sound' => 'default',
+                            'badge' => 1
                         ]
                     ]
                 ]
