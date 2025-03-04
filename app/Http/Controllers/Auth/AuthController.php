@@ -243,7 +243,7 @@ class AuthController extends Controller
     public function login(Request $request)
     {
         $validator = Validator::make($request->all(), [
-            'username' => 'required|string',
+            'email' => 'required|email',
             'password' => 'required|string'
         ]);
 
@@ -255,11 +255,11 @@ class AuthController extends Controller
             ], 422);
         }
 
-        $user = User::where('username', $request->username)->first();
+        $user = User::where('email', $request->email)->first();
 
         if (!$user || !Hash::check($request->password, $user->password)) {
             throw ValidationException::withMessages([
-                'username' => ['The provided credentials are incorrect.'],
+                'email' => ['The provided credentials are incorrect.'],
             ]);
         }
 
@@ -595,5 +595,63 @@ class AuthController extends Controller
             'status' => true,
             'message' => 'Transaction pin changed successfully'
         ]);
+    }
+
+    public function resendRegistrationOtp(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'email' => 'required|email'
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'status' => false,
+                'message' => 'Validation error',
+                'errors' => $validator->errors()
+            ], 422);
+        }
+
+        // Check if user data exists in cache
+        $cached_data = Cache::get('registration_otp_' . $request->email);
+        if (!$cached_data || !isset($cached_data['user_data'])) {
+            return response()->json([
+                'status' => false,
+                'message' => 'No pending registration found for this email'
+            ], 404);
+        }
+
+        // Check if user already exists
+        if (User::where('email', $request->email)->exists()) {
+            return response()->json([
+                'status' => false,
+                'message' => 'User already registered'
+            ], 400);
+        }
+
+        // Generate new OTP
+        $otp = str_pad(random_int(0, 9999), 4, '0', STR_PAD_LEFT);
+
+        // Update cache with new OTP
+        Cache::put('registration_otp_' . $request->email, [
+            'otp' => $otp,
+            'user_data' => $cached_data['user_data']
+        ], 600); // 10 minutes
+
+        // Send OTP email
+        try {
+            Mail::to($request->email)->send(new SendOtpMail($otp));
+
+            return response()->json([
+                'status' => true,
+                'message' => 'New OTP has been sent to your email'
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Failed to resend OTP: ' . $e->getMessage());
+            return response()->json([
+                'status' => false,
+                'message' => 'Failed to send OTP',
+                'error' => $e->getMessage()
+            ], 500);
+        }
     }
 }

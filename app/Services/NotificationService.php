@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Notification;
 use App\Services\PushNotificationService;
+use Illuminate\Support\Facades\Log;
 
 class NotificationService
 {
@@ -16,30 +17,59 @@ class NotificationService
 
     public function notifyTransaction($userId, $transaction)
     {
-        // Create notification message based on transaction type and status
-        $title = $this->getTransactionTitle($transaction);
-        $message = $this->getTransactionMessage($transaction);
+        try {
+            Log::info('Creating transaction notification', [
+                'user_id' => $userId,
+                'transaction_id' => $transaction->transaction_id,
+                'reference' => $transaction->reference,
+                'type' => $transaction->type,
+                'amount' => $transaction->amount
+            ]);
 
-        // Store notification in database
-        $notification = Notification::create([
-            'user_id' => $userId,
-            'title' => $title,
-            'message' => $message,
-            'type' => 'transaction',
-            'transaction_id' => $transaction->transaction_id ?? $transaction->id,
-            'reference' => $transaction->reference,
-            'amount' => $transaction->amount,
-            'status' => $transaction->status
-        ]);
+            // Create notification message based on transaction type and status
+            $title = $this->getTransactionTitle($transaction);
+            $message = $this->getTransactionMessage($transaction);
 
-        // Send push notification
-        $this->pushNotificationService->sendToUser($userId, $title, $message, [
-            'type' => 'transaction',
-            'transaction_id' => $transaction->transaction_id ?? $transaction->id,
-            'status' => $transaction->status
-        ]);
+            // Store notification in database
+            $notification = Notification::create([
+                'user_id' => $userId,
+                'title' => $title,
+                'message' => $message,
+                'type' => 'transaction',
+                'transaction_id' => $transaction->transaction_id ?? $transaction->id,
+                'reference' => $transaction->reference,
+                'amount' => $transaction->amount,
+                'status' => $transaction->status
+            ]);
 
-        return $notification;
+            Log::info('Notification created, sending push notification', [
+                'notification_id' => $notification->id,
+                'title' => $title,
+                'message' => $message
+            ]);
+
+            // Send push notification
+            $pushResult = $this->pushNotificationService->sendToUser($userId, $title, $message, [
+                'type' => 'transaction',
+                'transaction_id' => $transaction->transaction_id ?? $transaction->id,
+                'status' => $transaction->status
+            ]);
+
+            Log::info('Push notification result', [
+                'notification_id' => $notification->id,
+                'success' => $pushResult
+            ]);
+
+            return $notification;
+        } catch (\Exception $e) {
+            Log::error('Error sending notification', [
+                'user_id' => $userId,
+                'transaction_id' => $transaction->transaction_id ?? null,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            throw $e;
+        }
     }
 
     public function notifyReferralBonus($userId, $referralBonus)

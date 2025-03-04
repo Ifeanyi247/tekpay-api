@@ -33,14 +33,26 @@ class PushNotificationService
 
     public function sendToUser($userId, $title, $body, $data = [])
     {
+        Log::info('Fetching device tokens for user', [
+            'user_id' => $userId
+        ]);
+
         $deviceTokens = DeviceToken::where('user_id', $userId)
             ->where('is_active', true)
             ->pluck('device_token')
             ->toArray();
 
         if (empty($deviceTokens)) {
+            Log::warning('No active device tokens found for user', [
+                'user_id' => $userId
+            ]);
             return false;
         }
+
+        Log::info('Found device tokens for user', [
+            'user_id' => $userId,
+            'token_count' => count($deviceTokens)
+        ]);
 
         return $this->sendToTokens($deviceTokens, $title, $body, $data);
     }
@@ -48,14 +60,15 @@ class PushNotificationService
     public function sendToTokens($tokens, $title, $body, $data = [])
     {
         if (empty($this->accessToken)) {
+            Log::info('Refreshing FCM access token');
             $this->refreshAccessToken();
         }
 
         $url = "https://fcm.googleapis.com/v1/projects/{$this->projectId}/messages:send";
-        
+
         $message = [
             'message' => [
-                'token' => $tokens[0], // Send to first token
+                'token' => $tokens[0],
                 'notification' => [
                     'title' => $title,
                     'body' => $body
@@ -70,18 +83,20 @@ class PushNotificationService
                     'notification' => [
                         'sound' => 'default',
                         'channel_id' => 'high_importance_channel',
-                        'priority' => 'high',
-                        'notification_priority' => 'PRIORITY_HIGH',
                         'default_sound' => true,
                         'default_vibrate_timings' => true,
                         'default_light_settings' => true
                     ]
                 ],
                 'apns' => [
+                    'headers' => [
+                        'apns-priority' => '10'
+                    ],
                     'payload' => [
                         'aps' => [
                             'sound' => 'default',
-                            'badge' => 1
+                            'badge' => 1,
+                            'content-available' => 1
                         ]
                     ]
                 ]
@@ -89,10 +104,20 @@ class PushNotificationService
         ];
 
         try {
+            $successCount = 0;
+            $failureCount = 0;
+            $errors = [];
+
             // Send to each token (FCM v1 only supports one token per request)
             foreach ($tokens as $token) {
+                Log::info('Sending push notification', [
+                    'token' => substr($token, 0, 6) . '...', // Only log first 6 chars for security
+                    'title' => $title,
+                    'body' => $body
+                ]);
+
                 $message['message']['token'] = $token;
-                
+
                 $response = Http::withHeaders([
                     'Authorization' => 'Bearer ' . $this->accessToken,
                     'Content-Type' => 'application/json',
@@ -100,21 +125,50 @@ class PushNotificationService
 
                 if (!$response->successful()) {
                     $error = $response->json();
-                    if (isset($error['error']['status']) && 
-                        in_array($error['error']['status'], ['UNREGISTERED', 'INVALID_ARGUMENT'])) {
+                    $failureCount++;
+
+                    Log::error('FCM Error', [
+                        'token' => substr($token, 0, 6) . '...',
+                        'error' => $error,
+                        'status' => $response->status()
+                    ]);
+
+                    if (
+                        isset($error['error']['status']) &&
+                        in_array($error['error']['status'], ['UNREGISTERED', 'INVALID_ARGUMENT'])
+                    ) {
+                        Log::info('Removing invalid device token', [
+                            'token' => substr($token, 0, 6) . '...'
+                        ]);
                         // Remove invalid token
                         DeviceToken::where('device_token', $token)->delete();
                     }
-                    Log::error('FCM Error', [
-                        'token' => $token,
-                        'error' => $response->body()
+
+                    $errors[] = [
+                        'token' => substr($token, 0, 6) . '...',
+                        'error' => $error
+                    ];
+                } else {
+                    $successCount++;
+                    Log::info('Push notification sent successfully', [
+                        'token' => substr($token, 0, 6) . '...'
                     ]);
                 }
             }
-            
-            return true;
+
+            Log::info('Push notification batch complete', [
+                'total_tokens' => count($tokens),
+                'success_count' => $successCount,
+                'failure_count' => $failureCount,
+                'errors' => $errors
+            ]);
+
+            return $successCount > 0;
         } catch (\Exception $e) {
-            Log::error('FCM Send Error: ' . $e->getMessage());
+            Log::error('FCM Send Error', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
             return false;
         }
     }
