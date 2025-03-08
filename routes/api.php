@@ -5,6 +5,7 @@ use App\Http\Controllers\Bills\AirtimeController;
 use App\Http\Controllers\Bills\DataController;
 use App\Http\Controllers\Bills\EducationController;
 use App\Http\Controllers\Bills\ElectricityController;
+use App\Http\Controllers\Bills\InternetController;
 use App\Http\Controllers\Bills\TvController;
 use App\Http\Controllers\User\UserController;
 use App\Http\Controllers\Monnify\AuthTokenController;
@@ -16,8 +17,10 @@ use App\Http\Controllers\FlutterWave\BankController;
 use App\Http\Controllers\FlutterWave\VirtualAccountCreation;
 use App\Http\Controllers\Auth\ForgotPasswordController;
 use App\Http\Controllers\DeviceTokenController;
+use App\Http\Controllers\FlutterWave\WebhookController as FlutterWaveWebhookController;
 use App\Http\Controllers\NotificationController; // Added this line
 use App\Services\NotificationService;
+use App\Http\Controllers\WebhookController; // Added this line
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Route;
@@ -39,6 +42,7 @@ Route::get('/migrate', function () {
 });
 
 // Webhook endpoints (no auth required)
+Route::post('/webhook/flutterwave', [FlutterWaveWebhookController::class, 'handleWebhook']);
 Route::post('/virtual-account/webhook', [VirtualAccountCreation::class, 'handleWebhook']);
 Route::post('/transfer/webhook', [BankController::class, 'handleTransferWebhook'])->name('api.flutterwave.transfer.webhook');
 
@@ -97,10 +101,6 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::get('/banks/nigeria', [BankController::class, 'getNigerianBanks']);
             Route::post('/transfer', [BankController::class, 'initiateTransfer']);
         });
-
-        // Webhook endpoints (no auth required)
-        Route::post('/virtual-account/webhook', [VirtualAccountCreation::class, 'handleWebhook']);
-        Route::post('/transfer/webhook', [BankController::class, 'handleTransferWebhook'])->name('api.flutterwave.transfer.webhook');
     });
 
     // VTpass Webhook Routes
@@ -139,6 +139,12 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::post('/waec/purchase', [EducationController::class, 'purchaseWaecEducation']);
             Route::post('/jamb/verify', [EducationController::class, 'verifyJambProfile']);
             Route::post('/jamb/purchase', [EducationController::class, 'purchaseJamb']);
+        });
+
+        Route::prefix('internet')->group(function () {
+            Route::get('/variations/{serviceID}', [InternetController::class, 'getInternetPlans']);
+            Route::post('/verify-email', [InternetController::class, 'verifySmileEmail']);
+            Route::post('/purchase', [InternetController::class, 'purchaseInternet']);
         });
     });
 

@@ -60,7 +60,7 @@ trait VTPassResponseHandler
 
     protected function getTransactionStatus(array $transactions): string
     {
-        return match($transactions['status'] ?? 'unknown') {
+        return match ($transactions['status'] ?? 'unknown') {
             'delivered' => 'Transaction completed successfully',
             'initiated' => 'Transaction has been initiated',
             'pending' => 'Transaction is being processed',
