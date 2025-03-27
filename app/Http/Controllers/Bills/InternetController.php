@@ -19,8 +19,8 @@ class InternetController extends Controller
     use VTPassResponseHandler;
 
     protected $notificationService;
-    // private $baseUrl = 'https://vtpass.com/api';
-    private $baseUrl = 'https://sandbox.vtpass.com/api';
+    private $baseUrl = 'https://vtpass.com/api';
+    // private $baseUrl = 'https://sandbox.vtpass.com/api';
 
     public function __construct(NotificationService $notificationService)
     {

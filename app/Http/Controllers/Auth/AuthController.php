@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
+use App\Mail\LoginAttemptMail;
 use App\Mail\SendOtpMail;
 use App\Models\PasswordHistory;
 use App\Models\User;
@@ -242,39 +243,65 @@ class AuthController extends Controller
 
     public function login(Request $request)
     {
-        $validator = Validator::make($request->all(), [
-            'email' => 'required|email',
-            'password' => 'required|string'
-        ]);
+        try {
+            $validator = Validator::make($request->all(), [
+                'email' => 'required|email',
+                'password' => 'required|string'
+            ]);
 
-        if ($validator->fails()) {
+            if ($validator->fails()) {
+                return response()->json([
+                    'status' => false,
+                    'message' => 'Validation error',
+                    'errors' => $validator->errors()
+                ], 422);
+            }
+
+            $user = User::where('email', $request->email)->first();
+
+            if (!$user || !Hash::check($request->password, $user->password)) {
+                throw ValidationException::withMessages([
+                    'email' => ['The provided credentials are incorrect.'],
+                ]);
+            }
+
+            // Store user ID in cache for PIN verification
+            $loginToken = bin2hex(random_bytes(32));
+            Cache::put('login_' . $loginToken, $user->id, 300); // Valid for 5 minutes
+
+            // get ip details
+
+            $ip = $request->ip();
+            $location = file_get_contents("http://ip-api.com/json/{$ip}");
+            $locationData = json_decode($location, true);
+
+            // get login attempt details and send the mail
+            $details = [
+                'device' => $request->header('User-Agent'),
+                'ip_address' => $request->header('X-Forwarded-For')
+                    ? explode(',', $request->header('X-Forwarded-For'))[0] // Extract first IP
+                    : $request->ip(),
+                'location' => $locationData['city'] ?? 'Unknown' . ', ' . ($locationData['country'] ?? 'Unknown')
+            ];
+
+            Mail::to($user->email)->send(new LoginAttemptMail($details));
+
+            return response()->json([
+                'status' => true,
+                'message' => 'First step authentication successful. Please verify your PIN.',
+                'login_token' => $loginToken,
+                'username' => $user->username,
+                'profile_url' => $user->profile->profile_url,
+                'pin_code' => $user->profile->pin_code
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Login failed: ' . $e->getMessage());
             return response()->json([
                 'status' => false,
-                'message' => 'Validation error',
-                'errors' => $validator->errors()
-            ], 422);
+                'message' => 'Login failed',
+                'error' => $e->getMessage()
+            ], 500);
         }
-
-        $user = User::where('email', $request->email)->first();
-
-        if (!$user || !Hash::check($request->password, $user->password)) {
-            throw ValidationException::withMessages([
-                'email' => ['The provided credentials are incorrect.'],
-            ]);
-        }
-
-        // Store user ID in cache for PIN verification
-        $loginToken = bin2hex(random_bytes(32));
-        Cache::put('login_' . $loginToken, $user->id, 300); // Valid for 5 minutes
-
-        return response()->json([
-            'status' => true,
-            'message' => 'First step authentication successful. Please verify your PIN.',
-            'login_token' => $loginToken,
-            'username' => $user->username,
-            'profile_url' => $user->profile->profile_url,
-            'pin_code' => $user->profile->pin_code
-        ]);
     }
 
     public function verifyPin(Request $request)
